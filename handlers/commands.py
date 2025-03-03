@@ -1,6 +1,6 @@
 import discord
 from discord.ext import commands
-from typing import Optional, List, Tuple
+from typing import Optional, List, Tuple, Dict, Any
 from processors.content_processor import ContentProcessor
 from processors.audio_generator import AudioGenerator
 from utils.storage import FileStorage
@@ -9,6 +9,7 @@ import asyncio
 from pydub import AudioSegment
 import tempfile
 import os
+import json
 
 class CommandHandler(commands.Cog):
     def __init__(self, bot: commands.Bot, content_processor: ContentProcessor, 
@@ -27,6 +28,9 @@ class CommandHandler(commands.Cog):
         # Rate limiting
         self.last_request_time = 0
         self.min_request_interval = 2  # seconds between requests
+        
+        # Store active quizzes
+        self.active_quizzes = {}
 
     async def initialize_voices(self):
         """Initialize available voices for the podcast hosts."""
@@ -360,4 +364,250 @@ class CommandHandler(commands.Cog):
             self.storage.cleanup_old_files(hours)
             await ctx.send(f"Cleaned up files older than {hours} hours.")
         except Exception as e:
-            await ctx.send(f"Error during cleanup: {str(e)}") 
+            await ctx.send(f"Error during cleanup: {str(e)}")
+    
+    @commands.command(name="create_quiz")
+    async def create_quiz(self, ctx: commands.Context, source_type: str = "discussion", message_limit: int = 50, num_questions: int = 5):
+        """Create an interactive quiz from a document or discussion.
+        Usage:
+        - With PDF: Attach a PDF and use '!create_quiz pdf [num_questions]'
+        - With discussion: Use '!create_quiz discussion [message_limit] [num_questions]'
+        """
+        try:
+            await ctx.send("📝 Starting quiz creation...")
+            
+            # Get source content
+            if source_type.lower() == "pdf":
+                if not ctx.message.attachments:
+                    await ctx.send("Please attach a PDF file!")
+                    return
+                
+                attachment = ctx.message.attachments[0]
+                if not attachment.filename.lower().endswith('.pdf'):
+                    await ctx.send("Please attach a valid PDF file!")
+                    return
+                
+                pdf_bytes = await attachment.read()
+                pdf_file = io.BytesIO(pdf_bytes)
+                content = await self.content_processor.process_pdf(pdf_file)
+                await ctx.send("📄 PDF processed successfully.")
+                
+            elif source_type.lower() == "discussion":
+                messages = []
+                async for message in ctx.channel.history(limit=message_limit):
+                    messages.append(message)
+                content = await self.content_processor.extract_discussion(messages)
+                await ctx.send(f"💬 Extracted {len(messages)} messages from discussion.")
+                
+            else:
+                await ctx.send("Invalid source type. Use 'pdf' or 'discussion'.")
+                return
+            
+            # First attempt with full content
+            await ctx.send("🤔 Generating quiz questions...")
+            questions = await self.content_processor.generate_quiz_questions(content, num_questions)
+            
+            # If failed, try with summarized content
+            if not questions:
+                await ctx.send("⚠️ First attempt failed. Trying with summarized content...")
+                summary = await self.content_processor.summarize_content(content)
+                questions = await self.content_processor.generate_quiz_questions(summary, num_questions)
+                
+                # If still failed, try with fewer questions
+                if not questions and num_questions > 3:
+                    await ctx.send("⚠️ Second attempt failed. Trying with fewer questions...")
+                    questions = await self.content_processor.generate_quiz_questions(summary, 3)
+            
+            if not questions:
+                await ctx.send("❌ Failed to generate quiz questions. Please try again with different content or fewer questions.")
+                return
+            
+            # Save quiz data
+            quiz_id = str(ctx.message.id)
+            quiz_data = {
+                "questions": questions,
+                "current_question": 0,
+                "scores": {},
+                "channel_id": ctx.channel.id,
+                "participants": set(),  # Track quiz participants
+                "started": False        # Track if quiz has started
+            }
+            self.active_quizzes[quiz_id] = quiz_data
+            
+            # Create quiz embed
+            embed = discord.Embed(
+                title="📚 Interactive Quiz",
+                description=f"A {len(questions)}-question quiz has been created! Get ready to test your knowledge.",
+                color=discord.Color.blue()
+            )
+            embed.add_field(
+                name="How to Play",
+                value="1. React with 🎮 to join the quiz\n"
+                      "2. Questions will appear one at a time\n"
+                      "3. React with 🇦, 🇧, 🇨, or 🇩 to answer\n"
+                      "4. You have 10 seconds per question\n"
+                      "5. Points are awarded based on speed and accuracy",
+                inline=False
+            )
+            embed.set_footer(text=f"Quiz ID: {quiz_id}")
+            
+            # Send quiz invitation
+            quiz_msg = await ctx.send(embed=embed)
+            await quiz_msg.add_reaction("🎮")
+            
+            # Wait for players to join (30 seconds)
+            await ctx.send("⏳ Waiting 10 seconds for players to join...")
+            
+            def check(reaction, user):
+                return (
+                    reaction.message.id == quiz_msg.id and 
+                    str(reaction.emoji) == "🎮" and 
+                    not user.bot
+                )
+            
+            try:
+                while True:
+                    try:
+                        reaction, user = await self.bot.wait_for('reaction_add', timeout=10.0, check=check)
+                        quiz_data["participants"].add(user.id)
+                        quiz_data["scores"][user.id] = 0
+                        await ctx.send(f"👋 {user.name} has joined the quiz!")
+                    except asyncio.TimeoutError:
+                        break
+            except Exception as e:
+                print(f"Error while waiting for players: {e}")
+            
+            if not quiz_data["participants"]:
+                await ctx.send("❌ No players joined the quiz. Cancelling...")
+                del self.active_quizzes[quiz_id]
+                return
+            
+            # Start the quiz
+            quiz_data["started"] = True
+            await ctx.send(f"🎯 Starting quiz with {len(quiz_data['participants'])} players!")
+            await self.run_quiz(ctx, quiz_id)
+            
+        except Exception as e:
+            await ctx.send(f"❌ Error creating quiz: {str(e)}")
+            import traceback
+            await ctx.send(f"Detailed error:\n```{traceback.format_exc()}```")
+    
+    async def display_leaderboard(self, ctx: commands.Context, quiz_data: dict, title: str = "📊 Current Standings") -> None:
+        """Display the current quiz leaderboard."""
+        scores = quiz_data["scores"]
+        if not scores:
+            await ctx.send("No scores to display yet!")
+            return
+        
+        # Sort players by score
+        sorted_scores = sorted(scores.items(), key=lambda x: x[1], reverse=True)
+        
+        # Create leaderboard embed
+        embed = discord.Embed(
+            title=title,
+            color=discord.Color.gold()
+        )
+        
+        # Add player scores
+        leaderboard_text = ""
+        for i, (player_id, score) in enumerate(sorted_scores, 1):
+            player = ctx.guild.get_member(player_id)
+            if player:
+                medal = "🥇" if i == 1 else "🥈" if i == 2 else "🥉" if i == 3 else "👤"
+                leaderboard_text += f"{medal} {player.name}: {score} points\n"
+        
+        embed.add_field(name="Rankings", value=leaderboard_text or "No scores yet!", inline=False)
+        await ctx.send(embed=embed)
+
+    async def run_quiz(self, ctx: commands.Context, quiz_id: str):
+        """Run a quiz session."""
+        quiz_data = self.active_quizzes.get(quiz_id)
+        if not quiz_data:
+            await ctx.send("❌ Quiz not found.")
+            return
+        
+        try:
+            for i, question in enumerate(quiz_data["questions"]):
+                # Create question embed
+                embed = discord.Embed(
+                    title=f"Question {i+1}/{len(quiz_data['questions'])}",
+                    description=question["question"],
+                    color=discord.Color.green()
+                )
+                
+                # Add options
+                options_text = "\n".join([f"{key}: {value}" for key, value in question["options"].items()])
+                embed.add_field(name="Options", value=options_text, inline=False)
+                
+                # Send question
+                question_msg = await ctx.send(embed=embed)
+                
+                # Add option reactions
+                option_emojis = {"A": "🇦", "B": "🇧", "C": "🇨", "D": "🇩"}
+                for option in question["options"].keys():
+                    await question_msg.add_reaction(option_emojis[option])
+                
+                # Track who has answered
+                answered_users = set()
+                start_time = asyncio.get_event_loop().time()
+                
+                # Wait for answers (10 seconds)
+                while asyncio.get_event_loop().time() - start_time < 10:
+                    try:
+                        reaction, user = await self.bot.wait_for(
+                            'reaction_add',
+                            timeout=10.0 - (asyncio.get_event_loop().time() - start_time),
+                            check=lambda r, u: (
+                                r.message.id == question_msg.id and
+                                str(r.emoji) in option_emojis.values() and
+                                u.id in quiz_data["participants"] and
+                                u.id not in answered_users
+                            )
+                        )
+                        
+                        # Mark user as answered
+                        answered_users.add(user.id)
+                        
+                        # Calculate points (more points for faster answers)
+                        time_taken = asyncio.get_event_loop().time() - start_time
+                        max_points = 100
+                        time_bonus = int((10 - time_taken) * 10)  # Up to 100 bonus points for speed
+                        
+                        # Check if answer is correct
+                        selected_option = next(key for key, emoji in option_emojis.items() if str(reaction.emoji) == emoji)
+                        if selected_option == question["correct"]:
+                            points = max_points + time_bonus
+                            quiz_data["scores"][user.id] = quiz_data["scores"].get(user.id, 0) + points
+                            await ctx.send(f"✅ {user.name} answered correctly! +{points} points")
+                        
+                    except asyncio.TimeoutError:
+                        break
+                
+                # Show correct answer
+                correct_emoji = option_emojis[question["correct"]]
+                embed.add_field(
+                    name="✅ Correct Answer",
+                    value=f"{question['correct']}: {question['options'][question['correct']]}\n\n"
+                          f"Explanation: {question['explanation']}",
+                    inline=False
+                )
+                await question_msg.edit(embed=embed)
+                await ctx.send(f"The correct answer was {correct_emoji}!")
+                
+                # Display leaderboard every 2 questions or if it's the last question
+                if (i + 1) % 2 == 0 or i == len(quiz_data["questions"]) - 1:
+                    await self.display_leaderboard(ctx, quiz_data)
+                
+                # Short pause between questions
+                await asyncio.sleep(3)
+            
+            # End of quiz - show final leaderboard
+            await ctx.send("🎉 Quiz completed!")
+            await self.display_leaderboard(ctx, quiz_data, "🏆 Final Rankings")
+            
+        except Exception as e:
+            await ctx.send(f"❌ Error during quiz: {str(e)}")
+        finally:
+            # Clean up
+            if quiz_id in self.active_quizzes:
+                del self.active_quizzes[quiz_id] 

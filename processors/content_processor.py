@@ -1,6 +1,6 @@
 import PyPDF2
 from io import BytesIO
-from typing import List, Optional
+from typing import List, Optional, Dict, Any
 from pathlib import Path
 import discord
 from mistralai import Mistral
@@ -72,3 +72,100 @@ class ContentProcessor:
         except Exception as e:
             print(f"Error in summarize_content: {str(e)}")
             raise 
+    
+    async def generate_quiz_questions(self, content: str, num_questions: int = 5) -> List[Dict[str, Any]]:
+        """Generate quiz questions from content."""
+        prompt = f"""Create exactly {num_questions} multiple-choice quiz questions based on the following content.
+        
+        Format your response EXACTLY as a JSON object with this structure:
+        {{
+            "questions": [
+                {{
+                    "question": "Question text here?",
+                    "options": {{
+                        "A": "First option",
+                        "B": "Second option",
+                        "C": "Third option",
+                        "D": "Fourth option"
+                    }},
+                    "correct": "A",
+                    "explanation": "Explanation why A is correct"
+                }}
+            ]
+        }}
+
+        Requirements:
+        1. Response MUST be valid JSON
+        2. Each question MUST have exactly 4 options (A, B, C, D)
+        3. Questions should be engaging and varied in difficulty
+        4. Include both factual and analytical questions
+        5. Keep questions focused on the main points from the content
+
+        Content to create questions from:
+        {content}
+
+        Remember: Your entire response must be a valid JSON object matching the format above."""
+
+        messages = [
+            {
+                "role": "system",
+                "content": "You are a professional quiz creator. You MUST format your response as valid JSON matching the specified structure exactly."
+            },
+            {
+                "role": "user",
+                "content": prompt
+            }
+        ]
+
+        try:
+            response = await self.mistral_client.chat.complete_async(
+                model="mistral-large-latest",
+                messages=messages,
+            )
+            
+            response_text = response.choices[0].message.content.strip()
+            
+            # Try to find JSON content if it's wrapped in other text
+            try:
+                import json
+                quiz_data = json.loads(response_text)
+            except json.JSONDecodeError:
+                # Try to extract JSON from the response if it's not pure JSON
+                import re
+                json_match = re.search(r'({[\s\S]*})', response_text)
+                if json_match:
+                    try:
+                        quiz_data = json.loads(json_match.group(1))
+                    except json.JSONDecodeError:
+                        print(f"Failed to parse JSON from extracted content: {json_match.group(1)}")
+                        raise
+                else:
+                    print(f"No JSON-like content found in response: {response_text}")
+                    raise ValueError("Response does not contain valid JSON")
+
+            # Validate the quiz data structure
+            if not isinstance(quiz_data, dict) or "questions" not in quiz_data:
+                raise ValueError("Invalid quiz data structure: missing 'questions' key")
+            
+            questions = quiz_data["questions"]
+            if not isinstance(questions, list) or len(questions) == 0:
+                raise ValueError("Invalid quiz data structure: 'questions' must be a non-empty list")
+            
+            # Validate each question
+            for q in questions:
+                required_keys = ["question", "options", "correct", "explanation"]
+                if not all(key in q for key in required_keys):
+                    raise ValueError(f"Question missing required keys: {required_keys}")
+                if not isinstance(q["options"], dict) or len(q["options"]) != 4:
+                    raise ValueError("Each question must have exactly 4 options")
+                if not all(opt in q["options"] for opt in ["A", "B", "C", "D"]):
+                    raise ValueError("Options must be labeled A, B, C, D")
+                if q["correct"] not in ["A", "B", "C", "D"]:
+                    raise ValueError("Correct answer must be A, B, C, or D")
+
+            return questions
+            
+        except Exception as e:
+            print(f"Error generating quiz questions: {str(e)}")
+            print(f"Raw response: {response_text if 'response_text' in locals() else 'No response generated'}")
+            return [] 
