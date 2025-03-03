@@ -158,11 +158,12 @@ If you're seeing this error, it probably means that your terminal is not open in
 
 Below is a list of the registered Discord commands available in this bot, along with their arguments, use cases, and examples:
 
-- **!summarize_pdf [max_words]**
+- **!summarize_pdf [search] [max_words]**
   - **Arguments**: 
+    - `search`: Optional string to search for cached PDF files.
     - `max_words`: Optional maximum number of words for the summary.
-  - **Use Case**: Summarizes the content of an attached PDF file. Users need to attach a PDF to the message.
-  - **Example**: `!summarize_pdf 100`
+  - **Use Case**: Summarizes the content of an attached PDF file or a cached PDF file matching the search string. Users need to attach a PDF to the message or provide a search string.
+  - **Example**: `!summarize_pdf report 100`
 
 - **!summarize_discussion [message_limit]**
   - **Arguments**: 
@@ -170,19 +171,21 @@ Below is a list of the registered Discord commands available in this bot, along 
   - **Use Case**: Summarizes the recent discussion in the channel, providing a concise overview of the conversation.
   - **Example**: `!summarize_discussion 20`
   
-- **!create_quiz [source_type] [args]**
+- **!create_quiz [source_type] [search] [args]**
   - **Arguments**: 
     - `source_type`: Either "pdf" or "discussion".
+    - `search`: Optional string to search for cached PDF files (only for "pdf" source type).
     - `args`: For "pdf", specify `[num_questions]`. For "discussion", specify `[message_limit] [num_questions]`.
-  - **Use Case**: Creates an interactive quiz from a document or discussion. Users can join the quiz and answer questions to earn points.
-  - **Example**: `!create_quiz pdf 10` or `!create_quiz discussion 50 5`
+  - **Use Case**: Creates an interactive quiz from a document or discussion. Users can join the quiz and answer questions to earn points. Can use a cached PDF file if a search string is provided.
+  - **Example**: `!create_quiz pdf report 10` or `!create_quiz discussion 50 5`
 
-- **!create_podcast [source_type] [message_limit]**
+- **!create_podcast [source_type] [search] [message_limit]**
   - **Arguments**: 
     - `source_type`: Either "pdf" or "discussion".
+    - `search`: Optional string to search for cached PDF files (only for "pdf" source type).
     - `message_limit`: Number of messages to consider for discussion (default is 50).
-  - **Use Case**: Generates a podcast from a document or discussion. Users can attach a PDF or use recent messages in the channel to create a podcast script and audio.
-  - **Example**: `!create_podcast pdf` or `!create_podcast discussion 30`
+  - **Use Case**: Generates a podcast from a document or discussion. Users can attach a PDF or use recent messages in the channel to create a podcast script and audio. Can use a cached PDF file if a search string is provided.
+  - **Example**: `!create_podcast pdf report` or `!create_podcast discussion 30`
 
 - **!speak [text]**
   - **Arguments**: 
