@@ -1,12 +1,16 @@
 [project]
-name = "ai-agent"
+name = "discord-bot"
 version = "0.1.0"
-description = "Add your description here"
-readme = "README.md"
-requires-python = ">=3.13"
+description = "A Discord bot for content processing and audio generation"
 dependencies = [
-    "audioop-lts>=0.2.1",
-    "discord-py>=2.4.0",
-    "mistralai>=1.4.0",
-    "python-dotenv>=1.0.1",
+    "discord.py>=2.3.2",
+    "python-dotenv>=1.0.0",
+    "mistralai>=0.0.7",
+    "PyPDF2>=3.0.0",
+    "httpx>=0.25.0",
+    "pydub>=0.25.1",
 ]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
