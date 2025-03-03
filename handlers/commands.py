@@ -115,6 +115,33 @@ class CommandHandler(commands.Cog):
             print(f"Generated content: {script if 'script' in locals() else 'No script generated'}")
             return []
 
+    def search_pdf(self, search_string: str, directory: str = "./storage/pdf") -> List[str]:
+        """
+        Search for PDF files in directory that partially match the provided search string.
+        
+        Args:
+            search_string (str): The partial filename to search for
+            
+        Returns:
+            list: A list of filenames (or full paths) that match the search string
+        """
+        pdf_directory = directory
+        matches = []
+        
+        # Check if directory exists
+        if not os.path.exists(pdf_directory):
+            return matches
+        
+        # List all files in the directory
+        for filename in os.listdir(pdf_directory):
+            # Check if the file is a PDF and if the search string is in the filename
+            if filename.lower().endswith('.pdf') and search_string.lower() in filename.lower():
+                # Can return just the filename or the full path
+                full_path = os.path.join(pdf_directory, filename)
+                matches.append(full_path)
+        
+        return matches
+
     @commands.command(name="create_podcast")
     async def create_podcast(self, ctx: commands.Context, source_type: str = "discussion", message_limit: int = 50):
         """Create a podcast from a document or discussion.
@@ -264,25 +291,47 @@ class CommandHandler(commands.Cog):
             await ctx.send(f"Detailed error:\n```{traceback.format_exc()}```")
     
     @commands.command(name="summarize_pdf")
-    async def summarize_pdf(self, ctx: commands.Context, max_words: Optional[int] = None):
+    async def summarize_pdf(self, ctx: commands.Context, search: Optional[str] = None, max_words: Optional[int] = None):
         """Summarize a PDF file attached to the message."""
-        if not ctx.message.attachments:
-            await ctx.send("Please attach a PDF file to summarize!")
-            return
         
-        attachment = ctx.message.attachments[0]
-        if not attachment.filename.lower().endswith('.pdf'):
-            await ctx.send("Please attach a valid PDF file!")
-            return
+        # Variables to store the PDF data
+        pdf_bytes = None
+        pdf_file = None
+        filename = None
         
-        try:
-            # Download and process PDF
+        if search:
+            pdf_files = self.search_pdf(search)
+            if not pdf_files:
+                await ctx.send("No PDF files found matching the search criteria.")
+                return
+            else:
+                pdf_path = pdf_files[0]
+                filename = os.path.basename(pdf_path)
+                await ctx.send(f"Found PDF file: {filename}")
+                
+                # Read the file from disk
+                with open(pdf_path, 'rb') as file:
+                    pdf_bytes = file.read()
+                pdf_file = io.BytesIO(pdf_bytes)
+        else:
+            if not ctx.message.attachments:
+                await ctx.send("Please attach a PDF file to summarize!")
+                return
+        
+            attachment = ctx.message.attachments[0]
+            if not attachment.filename.lower().endswith('.pdf'):
+                await ctx.send("Please attach a valid PDF file!")
+                return
+            
+            # Download PDF from attachment
             pdf_bytes = await attachment.read()
             pdf_file = io.BytesIO(pdf_bytes)
+            filename = attachment.filename
             
             # Save PDF (synchronously)
-            pdf_path = self.storage.save_pdf(pdf_bytes, attachment.filename)
-            
+            pdf_path = self.storage.save_pdf(pdf_bytes, filename)
+        
+        try:
             # Extract and summarize text
             await ctx.send("Processing PDF...")
             text = await self.content_processor.process_pdf(pdf_file)
@@ -292,7 +341,7 @@ class CommandHandler(commands.Cog):
             chunks = [summary[i:i+1900] for i in range(0, len(summary), 1900)]
             
             # Send the first chunk with the file name
-            await ctx.send(f"Summary of {attachment.filename} (Part 1/{len(chunks)}):\n{chunks[0]}")
+            await ctx.send(f"Summary of {filename} (Part 1/{len(chunks)}):\n{chunks[0]}")
             
             # Send remaining chunks if any
             for i, chunk in enumerate(chunks[1:], 2):
