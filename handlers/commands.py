@@ -367,7 +367,7 @@ class CommandHandler(commands.Cog):
             await ctx.send(f"Error during cleanup: {str(e)}")
     
     @commands.command(name="create_quiz")
-    async def create_quiz(self, ctx: commands.Context, source_type: str = "discussion", message_limit: int = 50, num_questions: int = 5):
+    async def create_quiz(self, ctx: commands.Context, source_type: str = "discussion", *args):
         """Create an interactive quiz from a document or discussion.
         Usage:
         - With PDF: Attach a PDF and use '!create_quiz pdf [num_questions]'
@@ -375,6 +375,29 @@ class CommandHandler(commands.Cog):
         """
         try:
             await ctx.send("📝 Starting quiz creation...")
+            
+            # Parse arguments based on source type
+            if source_type.lower() == "pdf":
+                num_questions = 5  # default
+                if args:
+                    try:
+                        num_questions = int(args[0])
+                    except ValueError:
+                        await ctx.send("❌ Invalid number of questions. Using default (5).")
+                message_limit = 50  # not used for PDF
+            else:
+                message_limit = 50  # default
+                num_questions = 5  # default
+                if len(args) >= 1:
+                    try:
+                        message_limit = int(args[0])
+                    except ValueError:
+                        await ctx.send("❌ Invalid message limit. Using default (50).")
+                if len(args) >= 2:
+                    try:
+                        num_questions = int(args[1])
+                    except ValueError:
+                        await ctx.send("❌ Invalid number of questions. Using default (5).")
             
             # Get source content
             if source_type.lower() == "pdf":
@@ -390,7 +413,7 @@ class CommandHandler(commands.Cog):
                 pdf_bytes = await attachment.read()
                 pdf_file = io.BytesIO(pdf_bytes)
                 content = await self.content_processor.process_pdf(pdf_file)
-                await ctx.send("📄 PDF processed successfully.")
+                await ctx.send(f"📄 PDF processed successfully. Generating {num_questions} questions...")
                 
             elif source_type.lower() == "discussion":
                 messages = []
