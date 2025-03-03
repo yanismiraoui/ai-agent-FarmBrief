@@ -116,15 +116,7 @@ class CommandHandler(commands.Cog):
             return []
 
     def search_pdf(self, search_string: str, directory: str = "./storage/pdf") -> List[str]:
-        """
-        Search for PDF files in directory that partially match the provided search string.
-        
-        Args:
-            search_string (str): The partial filename to search for
-            
-        Returns:
-            list: A list of filenames (or full paths) that match the search string
-        """
+        """Search for PDF files in directory that partially match the provided search string."""
         pdf_directory = directory
         matches = []
         
@@ -143,7 +135,7 @@ class CommandHandler(commands.Cog):
         return matches
 
     @commands.command(name="create_podcast")
-    async def create_podcast(self, ctx: commands.Context, source_type: str = "discussion", message_limit: int = 50):
+    async def create_podcast(self, ctx: commands.Context, source_type: str = "discussion", search: Optional[str] = None, message_limit: int = 50):
         """Create a podcast from a document or discussion.
         Usage: 
         - With PDF: Attach a PDF and use '!create_podcast pdf'
@@ -154,17 +146,45 @@ class CommandHandler(commands.Cog):
             
             # Get source content
             if source_type.lower() == "pdf":
-                if not ctx.message.attachments:
-                    await ctx.send("Please attach a PDF file!")
-                    return
+
+                # Variables to store the PDF data
+                pdf_bytes = None
+                pdf_file = None
+                filename = None
                 
-                attachment = ctx.message.attachments[0]
-                if not attachment.filename.lower().endswith('.pdf'):
-                    await ctx.send("Please attach a valid PDF file!")
-                    return
+                if search:
+                    pdf_files = self.search_pdf(search)
+                    if not pdf_files:
+                        await ctx.send("No PDF files found matching the search criteria.")
+                        return
+                    else:
+                        pdf_path = pdf_files[0]
+                        filename = os.path.basename(pdf_path)
+                        await ctx.send(f"📄 Found PDF file: {filename}")
+                        
+                        # Read the file from disk
+                        with open(pdf_path, 'rb') as file:
+                            pdf_bytes = file.read()
+                        pdf_file = io.BytesIO(pdf_bytes)
+                else:
+                    if not ctx.message.attachments:
+                        await ctx.send("Please attach a PDF file to summarize!")
+                        return
                 
-                pdf_bytes = await attachment.read()
-                pdf_file = io.BytesIO(pdf_bytes)
+                    attachment = ctx.message.attachments[0]
+                    if not attachment.filename.lower().endswith('.pdf'):
+                        await ctx.send("Please attach a valid PDF file!")
+                        return
+                    
+                    # Download PDF from attachment
+                    pdf_bytes = await attachment.read()
+                    pdf_file = io.BytesIO(pdf_bytes)
+                    filename = attachment.filename
+                    
+                    # Save PDF (synchronously)
+                    pdf_path = self.storage.save_pdf(pdf_bytes, filename)
+
+                # Process the PDF
                 content = await self.content_processor.process_pdf(pdf_file)
                 await ctx.send("📄 PDF processed successfully.")
                 
@@ -307,7 +327,7 @@ class CommandHandler(commands.Cog):
             else:
                 pdf_path = pdf_files[0]
                 filename = os.path.basename(pdf_path)
-                await ctx.send(f"Found PDF file: {filename}")
+                await ctx.send(f"📄 Found PDF file: {filename}")
                 
                 # Read the file from disk
                 with open(pdf_path, 'rb') as file:
@@ -416,7 +436,7 @@ class CommandHandler(commands.Cog):
             await ctx.send(f"Error during cleanup: {str(e)}")
     
     @commands.command(name="create_quiz")
-    async def create_quiz(self, ctx: commands.Context, source_type: str = "discussion", *args):
+    async def create_quiz(self, ctx: commands.Context, source_type: str = "discussion", search: Optional[str] = None, *args):
         """Create an interactive quiz from a document or discussion.
         Usage:
         - With PDF: Attach a PDF and use '!create_quiz pdf [num_questions]'
@@ -450,17 +470,44 @@ class CommandHandler(commands.Cog):
             
             # Get source content
             if source_type.lower() == "pdf":
-                if not ctx.message.attachments:
-                    await ctx.send("Please attach a PDF file!")
-                    return
                 
-                attachment = ctx.message.attachments[0]
-                if not attachment.filename.lower().endswith('.pdf'):
-                    await ctx.send("Please attach a valid PDF file!")
-                    return
+                # Variables to store the PDF data
+                pdf_bytes = None
+                pdf_file = None
+                filename = None
                 
-                pdf_bytes = await attachment.read()
-                pdf_file = io.BytesIO(pdf_bytes)
+                if search:
+                    pdf_files = self.search_pdf(search)
+                    if not pdf_files:
+                        await ctx.send("No PDF files found matching the search criteria.")
+                        return
+                    else:
+                        pdf_path = pdf_files[0]
+                        filename = os.path.basename(pdf_path)
+                        await ctx.send(f"📄 Found PDF file: {filename}")
+                        
+                        # Read the file from disk
+                        with open(pdf_path, 'rb') as file:
+                            pdf_bytes = file.read()
+                        pdf_file = io.BytesIO(pdf_bytes)
+                else:
+                    if not ctx.message.attachments:
+                        await ctx.send("Please attach a PDF file to summarize!")
+                        return
+                
+                    attachment = ctx.message.attachments[0]
+                    if not attachment.filename.lower().endswith('.pdf'):
+                        await ctx.send("Please attach a valid PDF file!")
+                        return
+                    
+                    # Download PDF from attachment
+                    pdf_bytes = await attachment.read()
+                    pdf_file = io.BytesIO(pdf_bytes)
+                    filename = attachment.filename
+                    
+                    # Save PDF (synchronously)
+                    pdf_path = self.storage.save_pdf(pdf_bytes, filename)
+                    
                 content = await self.content_processor.process_pdf(pdf_file)
                 await ctx.send(f"📄 PDF processed successfully. Generating {num_questions} questions...")
                 
