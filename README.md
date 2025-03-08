@@ -65,6 +65,7 @@ Usage:
 ### 5. Content Summarization 📚
 Generate concise summaries of various content types:
 - PDF document summarization
+- TXT file summarization
 - Discussion thread summarization
 - Customizable summary length
 - Structured output format
@@ -72,12 +73,33 @@ Generate concise summaries of various content types:
 Usage:
 ```bash
 # Summarize PDF
-!summarize_pdf [max_words]
+!summarize pdf [max_words]
+# Summarize TXT
+!summarize txt [max_words]
 # Summarize discussion
-!summarize_discussion [message_limit]
+!summarize discussion [max_words]
 ```
 
-### 6. Text-to-Speech 🗣️
+### 6. Interactive Flashcards 🎴
+Convert any content into interactive study flashcards:
+- Generate flashcards from PDF documents, TXT files, or discussions
+- Difficulty levels (Easy 🟢, Medium 🟡, Hard 🔴)
+- Category-based organization
+- Interactive reaction-based controls
+- Progress tracking and statistics
+- Spaced repetition learning
+
+Usage:
+```bash
+# Create from PDF
+!create_flashcards pdf [num_cards]
+# Create from TXT
+!create_flashcards txt [num_cards]
+# Create from discussion
+!create_flashcards discussion [num_cards] [message_limit]
+```
+
+### 7. Text-to-Speech 🗣️
 Convert text to natural-sounding speech:
 - High-quality voice synthesis
 - Support for various languages
@@ -86,7 +108,6 @@ Convert text to natural-sounding speech:
 Usage:
 ```bash
 !speak "Your text here"
-!list_voices
 ```
 
 ## Setup
@@ -118,60 +139,69 @@ python main.py
 
 Below is a list of the registered Discord commands available in this bot, along with their arguments, use cases, and examples:
 
-- **!summarize_pdf [search] [max_words]**
+- **!summarize [source_type] [max_words]**
   - **Arguments**: 
-    - `search`: Optional string to search for cached PDF files.
-    - `max_words`: Optional maximum number of words for the summary.
-  - **Use Case**: Summarizes the content of an attached PDF file or a cached PDF file matching the search string. Users need to attach a PDF to the message or provide a search string.
-  - **Example**: `!summarize_pdf report 100`
-
-- **!summarize_discussion [message_limit]**
-  - **Arguments**: 
-    - `message_limit`: Number of recent messages to summarize (default is 50).
-  - **Use Case**: Summarizes the recent discussion in the channel, providing a concise overview of the conversation.
-  - **Example**: `!summarize_discussion 20`
+    - `source_type`: Type of content to summarize ("pdf", "txt", or "discussion")
+    - `max_words`: Optional maximum number of words for the summary
+  - **Use Case**: Summarizes content from different sources. For PDF/TXT, attach the file to the message. For discussions, it processes recent messages in the channel.
+  - **Example**: 
+    - `!summarize pdf 100` (with PDF attachment)
+    - `!summarize txt 200` (with TXT attachment)
+    - `!summarize discussion 150`
   
 - **!create_quiz [source_type] [search] [args]**
   - **Arguments**: 
-    - `source_type`: Either "pdf" or "discussion".
-    - `search`: Optional string to search for cached PDF files (only for "pdf" source type).
-    - `args`: For "pdf", specify `[num_questions]`. For "discussion", specify `[message_limit] [num_questions]`.
+    - `source_type`: Either "pdf", "txt", or "discussion"
+    - `search`: Optional string to search for cached PDF files (only for "pdf" source type)
+    - `args`: For "pdf"/"txt", specify `[num_questions]`. For "discussion", specify `[message_limit] [num_questions]`
   - **Use Case**: Creates an interactive quiz from a document or discussion. Users can join the quiz and answer questions to earn points. Can use a cached PDF file if a search string is provided.
   - **Example**: `!create_quiz pdf report 10` or `!create_quiz discussion 50 5`
 
 - **!create_podcast [source_type] [search] [message_limit]**
   - **Arguments**: 
-    - `source_type`: Either "pdf" or "discussion".
-    - `search`: Optional string to search for cached PDF files (only for "pdf" source type).
-    - `message_limit`: Number of messages to consider for discussion (default is 50).
+    - `source_type`: Either "pdf" or "discussion"
+    - `search`: Optional string to search for cached PDF files (only for "pdf" source type)
+    - `message_limit`: Number of messages to consider for discussion (default is 50)
   - **Use Case**: Generates a podcast from a document or discussion. Users can attach a PDF or use recent messages in the channel to create a podcast script and audio. Can use a cached PDF file if a search string is provided.
   - **Example**: `!create_podcast pdf report` or `!create_podcast discussion 30`
 
+- **!create_flashcards [source_type] [num_cards] [message_limit]**
+  - **Arguments**: 
+    - `source_type`: Type of content to create flashcards from ("pdf", "txt", or "discussion")
+    - `num_cards`: Number of flashcards to generate (default: 10)
+    - `message_limit`: For discussion mode, number of messages to process (default: 50)
+  - **Use Case**: Creates an interactive flashcard set from documents or discussions. Uses reaction-based controls for easy navigation and progress tracking.
+  - **Example**: 
+    - `!create_flashcards pdf 15` (with PDF attachment)
+    - `!create_flashcards txt 10` (with TXT attachment)
+    - `!create_flashcards discussion 20 100` (from last 100 messages)
+  - **Controls**:
+    - 🔄 Show Answer
+    - ⏭️ Next Card
+    - ✅ Mark Correct
+    - ❌ Mark Incorrect
+    - 🏁 End Session
+
 - **!speak [text]**
   - **Arguments**: 
-    - `text`: The text to convert into speech.
-  - **Use Case**: Converts the provided text into an audio file using Eleven Labs and sends it back to the channel.
+    - `text`: The text to convert into speech
+  - **Use Case**: Converts the provided text into an audio file using Eleven Labs and sends it back to the channel
   - **Example**: `!speak Hello, this is a test message.`
-
-- **!list_voices**
-  - **Arguments**: None
-  - **Use Case**: Lists available voices from Eleven Labs that can be used for text-to-speech conversion.
-  - **Example**: `!list_voices`
 
 - **!cleanup [hours]**
   - **Arguments**: 
-    - `hours`: The age of files to clean up (default is 48 hours).
+    - `hours`: The age of files to clean up (default is 48 hours)
   - **Use Case**: Cleans up old files stored by the bot. This command is restricted to administrators.
   - **Example**: `!cleanup 24`
 
 - **!ping**
   - **Arguments**: None
-  - **Use Case**: Checks the bot's responsiveness and latency.
+  - **Use Case**: Checks the bot's responsiveness and latency
   - **Example**: `!ping`
 
 - **!help**
   - **Arguments**: None
-  - **Use Case**: Provides a list of available commands and their descriptions.
+  - **Use Case**: Provides a list of available commands and their descriptions
   - **Example**: `!help`
 
 ## Dependencies
