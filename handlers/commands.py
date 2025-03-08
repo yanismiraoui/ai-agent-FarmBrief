@@ -200,57 +200,71 @@ class CommandHandler(commands.Cog):
         return matches
 
     @commands.command(name="create_podcast")
-    async def create_podcast(self, ctx: commands.Context, file_type: str = None, search: Optional[str] = None,*args):
-        """Create a podcast from a PDF or TXT file.
+    async def create_podcast(self, ctx: commands.Context, source_type: str = None, message_limit: int = 50, *args):
+        """Create a podcast from a PDF, TXT file, or discussion.
         Usage: 
         !create_podcast pdf [file attachment]
         !create_podcast txt [file attachment]
+        !create_podcast discussion [message_limit]
         """
-        if not file_type or file_type.lower() not in ['pdf', 'txt']:
-            await ctx.send("❌ Please specify the file type (pdf or txt)!\n"
-                          "Usage: `!create_podcast pdf [file attachment]` or `!create_podcast txt [file attachment]`")
-            return
-        pdf_bytes = None
-        pdf_file = None
-        filename = None
-        
-        if search:
-            pdf_files = self.search_pdf(search)
-            if not pdf_files:
-                await ctx.send("No PDF files found matching the search criteria.")
-                return
-            else:
-                pdf_path = pdf_files[0]
-                filename = os.path.basename(pdf_path)
-                await ctx.send(f"📄 Found PDF file: {filename}")
-                
-                # Read the file from disk
-                with open(pdf_path, 'rb') as file:
-                    pdf_bytes = file.read()
-                pdf_file = io.BytesIO(pdf_bytes)
-        if not ctx.message.attachments:
-            await ctx.send("❌ Please attach a file!")
-            return
-
-        file = ctx.message.attachments[0]
-        
-        # Validate file type
-        if file_type.lower() == 'pdf' and not file.filename.lower().endswith('.pdf'):
-            await ctx.send("❌ Please attach a PDF file!")
-            return
-        elif file_type.lower() == 'txt' and not file.filename.lower().endswith('.txt'):
-            await ctx.send("❌ Please attach a TXT file!")
+        if not source_type or source_type.lower() not in ['pdf', 'txt', 'discussion']:
+            await ctx.send("❌ Please specify the source type (pdf, txt, or discussion)!\n"
+                          "Usage:\n"
+                          "• `!create_podcast pdf` (with PDF attachment)\n"
+                          "• `!create_podcast txt` (with TXT attachment)\n"
+                          "• `!create_podcast discussion [message_limit]`")
             return
 
         try:
-            # Download the file
-            file_bytes = await file.read()
+            content = None
+            filename = None
             
-            # Process the content based on file type
-            if file_type.lower() == 'pdf':
-                content = await self.content_processor.process_pdf(file_bytes)
-            else:  # txt
-                content = file_bytes.decode('utf-8')
+            if source_type.lower() == "discussion":
+                # Process discussion messages
+                await ctx.send(f"📝 Extracting last {message_limit} messages from discussion...")
+                messages = []
+                async for message in ctx.channel.history(limit=message_limit):
+                    if not message.author.bot:  # Skip bot messages
+                        messages.append(message)
+                
+                if not messages:
+                    await ctx.send("❌ No messages found in the discussion.")
+                    return
+                
+                # Extract content from messages
+                content = "\n".join([f"{msg.author.name}: {msg.content}" for msg in messages])
+                filename = f"Discussion in #{ctx.channel.name}"
+                
+            else:
+                # Handle file-based sources (PDF and TXT)
+                if not ctx.message.attachments:
+                    await ctx.send("❌ Please attach a file!")
+                    return
+
+                file = ctx.message.attachments[0]
+                
+                # Validate file type
+                if source_type.lower() == 'pdf' and not file.filename.lower().endswith('.pdf'):
+                    await ctx.send("❌ Please attach a PDF file!")
+                    return
+                elif source_type.lower() == 'txt' and not file.filename.lower().endswith('.txt'):
+                    await ctx.send("❌ Please attach a TXT file!")
+                    return
+
+                # Download and process the file
+                file_bytes = await file.read()
+                
+                # Process content based on file type
+                if source_type.lower() == 'pdf':
+                    content = await self.content_processor.process_pdf(file_bytes)
+                else:  # txt
+                    content = file_bytes.decode('utf-8')
+                
+                filename = file.filename
+
+            if not content:
+                await ctx.send("❌ No content found to process.")
+                return
 
             # Generate podcast script
             await ctx.send("🎙️ Generating engaging podcast script...")
