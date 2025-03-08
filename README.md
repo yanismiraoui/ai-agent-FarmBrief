@@ -2,6 +2,8 @@
 
 FarmBrief is a powerful Discord bot designed to enhance your server's functionality with AI-powered features for content creation, learning, and collaboration.
 
+**Deployed with Replit and available 24/7 on the FarmBrief Discord server 🌟**
+
 ## Features
 
 ### 1. Podcast Creation 🎙️
