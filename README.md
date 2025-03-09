@@ -4,6 +4,8 @@ FarmBrief is a powerful Discord bot designed to enhance your server's functional
 
 **Deployed with Replit and available 24/7 on the FarmBrief Discord server 🌟**
 
+Note: This project uses ElevenLabs and MistralAI APIs. We only use the free tiers of these services, thus the bot is limited in credits and may not work if the free tiers are exceeded (especially for ElevenLabs).
+
 ## Features
 
 ### 1. Podcast Creation 🎙️
